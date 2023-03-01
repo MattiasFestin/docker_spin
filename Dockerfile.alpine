@@ -1,0 +1,60 @@
+FROM frolvlad/alpine-glibc
+
+SHELL ["/bin/bash", "-x", "-c", "-o", "pipefail"]
+
+RUN apk update && apk add --no-cache  \
+        ca-certificates \
+        dumb-init \
+        tzdata \
+  && update-ca-certificates
+
+RUN apk add --no-cache gnupg curl unzip wget bash nomad consul vault alpine-sdk libstdc++ libcrypto1.1 libssl1.1 libressl-dev pwgen
+RUN GNUPGHOME="$(mktemp -d)" \
+  && export GNUPGHOME \
+  && gpg --keyserver pgp.mit.edu --keyserver keys.openpgp.org --keyserver keyserver.ubuntu.com --recv-keys "C874 011F 0AB4 0511 0D02 1055 3436 5D94 72D7 468F"
+ARG home_path="/root"
+
+ADD ./ /root/
+
+WORKDIR /tmp
+
+#Install Spin
+ARG spin_version=v0.8.0
+RUN curl -sLO https://github.com/fermyon/spin/releases/download/${spin_version}/spin-${spin_version}-linux-amd64.tar.gz \
+	&& tar zxvf spin-${spin_version}-linux-amd64.tar.gz -C /usr/local/bin \
+	&& chmod +x /usr/local/bin/spin
+
+#Install Bindle
+ARG bindle_version=v0.9.0
+RUN curl -sO https://bindle.blob.core.windows.net/releases/bindle-${bindle_version}-linux-amd64.tar.gz \
+	&& tar zxvf bindle-${bindle_version}-linux-amd64.tar.gz -C /usr/local/bin \
+	&& chmod +x /usr/local/bin/bindle*
+
+#Install Hippo
+ARG hippo_version=v0.19.1
+RUN curl -sLO https://github.com/deislabs/hippo/releases/download/${hippo_version}/hippo-server-linux-x64.tar.gz \
+ 	&& mkdir -p ${home_path}/hippo \
+ 	&& tar zxvf hippo-server-linux-x64.tar.gz -C ${home_path}/hippo \
+ 	&& chmod +x /root/hippo/linux-x64/Hippo.Web
+
+#Apply Fermyon styling to Hippo
+RUN curl -sLO https://gist.githubusercontent.com/bacongobbler/48dc7b01aa99fa4b893eeb6b62f8cd27/raw/fb4dae8f42bc6aea22b2566084d01fa0de845e7c/styles.css \
+	&& curl -sLO https://gist.githubusercontent.com/bacongobbler/48dc7b01aa99fa4b893eeb6b62f8cd27/raw/fb4dae8f42bc6aea22b2566084d01fa0de845e7c/logo.svg \
+	&& curl -sLO https://gist.githubusercontent.com/bacongobbler/48dc7b01aa99fa4b893eeb6b62f8cd27/raw/fb4dae8f42bc6aea22b2566084d01fa0de845e7c/config.json \
+	&& curl -sLO https://www.fermyon.com/favicon.ico \
+	&& mv styles.css ${home_path}/hippo/linux-x64/wwwroot/ \
+	&& mv config.json favicon.ico logo.svg ${home_path}/hippo/linux-x64/wwwroot/assets/
+
+RUN apk del alpine-sdk
+
+WORKDIR /root
+
+RUN chmod +x ./start.sh
+
+ENV home_path="/root"
+ENV HIPPO_REGISTRATION_MODE=Open
+
+EXPOSE 4646 4647 4648 4648/udp 8500 8200 8081
+
+
+ENTRYPOINT [ "./start.sh" ]
